@@ -2,13 +2,14 @@ package org.totemcraft.camera;
 
 import io.netty.buffer.Unpooled;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.network.protocol.game.ClientboundSetCameraPacket;
-import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
+import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.*;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
-import org.bukkit.Bukkit;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.phys.Vec3;
 import org.bukkit.GameMode;
-import org.bukkit.Location;
 import org.bukkit.craftbukkit.v1_18_R2.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.joor.Reflect;
@@ -16,6 +17,7 @@ import xyz.jpenilla.reflectionremapper.ReflectionRemapper;
 
 import java.util.Iterator;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 
 class PrimaryThreadSynchronizedPositionSender implements Runnable {
@@ -29,43 +31,61 @@ class PrimaryThreadSynchronizedPositionSender implements Runnable {
 
     Camera.Point lastPoint;
 
-    CameraEntity cameraEntity;
     boolean cameraMounted = false;
 
     boolean finished = false;
 
     PrimaryThreadSynchronizedPositionSender(Player player, List<Camera.Point> points) {
-        System.out.println("points.size() = " + points.size());
-
         for (int i = 0; i < 10; i++) {
-            if(points.size()<=i) break;
-            System.out.println("point "+i+" = "+points.get(i));
+            if (points.size() <= i) break;
         }
 
         this.player = player;
         this.points = points.iterator();
         this.startPoint = this.points.next();
-        System.out.println("this.startPoint = " + this.startPoint);
+
+        initCamera();
     }
+
+    int pseudoEntityId = 18640000;
+
+    double cameraX, cameraY, cameraZ;
 
     void initCamera() {
         Camera.Point point = startPoint;
         ServerPlayer nmsPlayer = ((CraftPlayer) player).getHandle();
-        cameraEntity = new CameraEntity(nmsPlayer.getLevel(), point.x(),point.y(),point.z(),(float)point.yaw(),(float)point.pitch());
-        nmsPlayer.level.addFreshEntity(cameraEntity);
-    }
 
-    GameMode originalGameMode;
+        cameraX = point.x();
+        cameraY = point.y();
+        cameraZ = point.z();
+        ClientboundAddEntityPacket addPacket = new ClientboundAddEntityPacket(
+                pseudoEntityId, UUID.randomUUID(),
+                point.x(), point.y(), point.z(),
+                (float) point.yaw(), (float) point.pitch(),
+                EntityType.SLIME, 0,
+                Vec3.ZERO
+        );
+        nmsPlayer.connection.send(addPacket);
 
-    void mountCamera() {
+        FriendlyByteBuf buf = new EntityDataWriter(pseudoEntityId)
+                .write(ReflectionUtil.DATA_SHARED_FLAGS_ID, (byte) (1 << 5)) // invisible
+                .write(ReflectionUtil.DATA_NO_GRAVITY, true)
+                .write(ReflectionUtil.SLIME_DATA_ID_SIZE, 1)
+                .create();
+
+        ClientboundSetEntityDataPacket dataPacket = new ClientboundSetEntityDataPacket(buf);
+        nmsPlayer.connection.send(dataPacket);
+
         originalGameMode = player.getGameMode();
         player.setGameMode(GameMode.SPECTATOR);
-        ServerPlayer nmsPlayer = ((CraftPlayer) player).getHandle();
+
         FriendlyByteBuf msg = new FriendlyByteBuf(Unpooled.buffer());
-        msg.writeVarInt(cameraEntity.getId());
+        msg.writeVarInt(pseudoEntityId);
         nmsPlayer.connection.send(new ClientboundSetCameraPacket(msg));
         cameraMounted = true;
     }
+
+    GameMode originalGameMode;
 
     void destroyCamera() {
         ServerPlayer nmsPlayer = ((CraftPlayer) player).getHandle();
@@ -73,32 +93,21 @@ class PrimaryThreadSynchronizedPositionSender implements Runnable {
         msg.writeVarInt(nmsPlayer.getId());
         nmsPlayer.connection.send(new ClientboundSetCameraPacket(msg));
 
-        if(cameraEntity!=null) {
-            cameraEntity.remove();
-        }
-        if(originalGameMode!=null) player.setGameMode(originalGameMode);
+        ClientboundRemoveEntitiesPacket removePkt = new ClientboundRemoveEntitiesPacket(pseudoEntityId);
+        nmsPlayer.connection.send(removePkt);
+
+        if (originalGameMode != null) player.setGameMode(originalGameMode);
     }
 
     void syncTick() {
-        if(finished) {
+        if (finished) {
             destroyCamera();
-            return;
-        }
-        if(cameraEntity == null) {
-            initCamera();
-            return;
-        }
-        if (!cameraMounted) {
-            mountCamera();
             return;
         }
 
         Camera.Point syncPoint = lastPoint;
         if (syncPoint == null) return;
-        Location syncLoc = new Location(player.getWorld(), syncPoint.x(), syncPoint.y(), syncPoint.z(), (float) syncPoint.yaw(), (float) syncPoint.pitch());
-        player.teleport(syncLoc);
-        cameraEntity.setPos(syncPoint.x(), syncPoint.y(), syncPoint.z());
-        cameraEntity.setRot((float)syncPoint.yaw(), (float)syncPoint.pitch());
+        ((CraftPlayer) player).getHandle().absMoveTo(syncPoint.x(), syncPoint.y(), syncPoint.z(), (float) syncPoint.yaw(), (float) syncPoint.pitch());
     }
 
     @Override
@@ -109,12 +118,7 @@ class PrimaryThreadSynchronizedPositionSender implements Runnable {
             return;
         }
 
-        if(cameraEntity == null || !cameraMounted) {
-            // wait for camera init
-            return;
-        }
-
-        if(!points.hasNext()) {
+        if (!points.hasNext()) {
             finished = true;
             schedule.cancel(false);
             return;
@@ -127,16 +131,26 @@ class PrimaryThreadSynchronizedPositionSender implements Runnable {
 
         Reflect.on(pktHandler).set(REFLECTION_REMAPPER.remapFieldName(ServerGamePacketListenerImpl.class, "awaitingTeleport"), ++awaitingTeleport);
 
+        short dx = (short) ((lastPoint.x() - cameraX) * 4096.0D);
+        short dy = (short) ((lastPoint.y() - cameraY) * 4096.0D);
+        short dz = (short) ((lastPoint.z() - cameraZ) * 4096.0D);
+
+        int yaw = Mth.floor((lastPoint.yaw() % 360F) * 256.0F / 360.0F);
+
+        int pitch = Mth.floor((lastPoint.pitch() % 360F) * 256.0F / 360.0F);
+
+        Packet<?> pkt = new ClientboundMoveEntityPacket.PosRot(pseudoEntityId
+                , dx, dy, dz, (byte) yaw, (byte) pitch, false);
+        pktHandler.send(pkt);
+
         FriendlyByteBuf msg = new FriendlyByteBuf(Unpooled.buffer());
+        msg.writeVarInt(pseudoEntityId);
+        msg.writeByte((byte) yaw);
+        pkt = new ClientboundRotateHeadPacket(msg);
+        pktHandler.send(pkt);
 
-        msg.writeVarInt(cameraEntity.getId());
-        msg.writeDouble(lastPoint.x());
-        msg.writeDouble(lastPoint.y());
-        msg.writeDouble(lastPoint.z());
-        msg.writeByte((byte)((int)(lastPoint.yaw() * 256.0F / 360.0F)));
-        msg.writeByte((byte)((int)(lastPoint.pitch() * 256.0F / 360.0F)));
-        msg.writeBoolean(false); // on ground
-
-        ((CraftPlayer) player).getHandle().networkManager.send(new ClientboundTeleportEntityPacket(msg));
+        cameraX = lastPoint.x();
+        cameraY = lastPoint.y();
+        cameraZ = lastPoint.z();
     }
 }
