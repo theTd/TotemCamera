@@ -1,4 +1,0 @@
-name: camera
-version: '1.0.0-SNAPSHOT'
-main: org.totemcraft.camera.Camera
-api-version: '1.18'
