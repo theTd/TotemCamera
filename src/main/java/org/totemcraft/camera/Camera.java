@@ -21,7 +21,7 @@ import java.util.logging.Level;
 import java.util.stream.Collectors;
 
 public final class Camera extends JavaPlugin {
-    double lambda = 0.1;
+    double lambda = 0.001;
     //用于存储点坐标的简单类
     @Data
     public class Point {
@@ -243,14 +243,14 @@ public final class Camera extends JavaPlugin {
                 posList.clear();
                 ctx.sendMessage("[TotemCamera]: 已清除所有关键点");
             });
-//            new CommandExecutor(this, "speed") {
-//                final ArgTokenR<Double> argSpeed = requireArg(ArgParser.DOUBLE, "speed");
-//                @Override
-//                public void execute(@NotNull CommandContext ctx) throws CommandSignal {
-//                    lambda = ctx.valueOf(argSpeed);
-//                    ctx.sendMessage("[TotemCamera]: 已设置速度为："+lambda);
-//                }
-//            };
+            new CommandExecutor(this, "speed") {
+                final ArgTokenR<Double> argSpeed = requireArg(ArgParser.DOUBLE, "speed");
+                @Override
+                public void execute(@NotNull CommandContext ctx) throws CommandSignal {
+                    lambda = (ctx.valueOf(argSpeed)) / 1000;
+                    ctx.sendMessage("[TotemCamera]: 已设置速度为："+(lambda*1000));
+                }
+            };
             //保存当前路径为文件
             new CommandExecutor(this, "save") {
                 final ArgTokenR<String> argFilename = requireArg(ArgParser.STRING, "filename");
@@ -259,7 +259,9 @@ public final class Camera extends JavaPlugin {
                 @SneakyThrows
                 public void execute(@NotNull CommandContext ctx) throws CommandSignal {
 
-                    if (posList.size()< 2) throw  error("场景无效");
+                    if (posList.size()< 2){
+                        throw  error("场景无效");
+                    }
 
                     String fileName = ctx.valueOf(argFilename);
                     boolean overwrite = ctx.valueOf(argOverwrite);
@@ -303,6 +305,10 @@ public final class Camera extends JavaPlugin {
                 }
             };
             childCommand("start",(ctx)->{
+                if (posList.size()< 2) {
+                    ctx.sendMessage("[TotemCamera]: 关键点必须大于或等于2个");
+                    throw  error("关键点必须大于或等于2个");
+                }
                 PointSequence ps = new PointSequence();
                 posList.forEach(element -> {
                     double pos1 = element.getBlockX();
@@ -312,7 +318,7 @@ public final class Camera extends JavaPlugin {
                     float pitch = element.getPitch();
                     ps.addPoints(new Point(pos1, pos2, pos3, yaw, pitch));
                 });
-                PointSequence result = catmullRomConnect(ps, ps.getFirst(), ps.getLast(), 10);
+                PointSequence result = catmullRomConnect(ps, ps.getFirst(), ps.getLast(), lambda);
 
                 Point[] teleportPoints = result.array();
 
