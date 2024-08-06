@@ -1,6 +1,7 @@
 plugins {
     id 'java'
     id "io.papermc.paperweight.userdev" version "1.7.2-SNAPSHOT"
+    id "xyz.jpenilla.run-paper" version "2.3.0"
 
     id "io.freefair.lombok" version "6.2.0"
     id "com.github.johnrengelman.shadow" version "7.1.2"
@@ -36,7 +37,9 @@ dependencies {
     paperweight.paperDevBundle("1.18.2-R0.1-SNAPSHOT")
     implementation("org.jooq:joor-java-8:0.9.15")
     implementation("xyz.jpenilla:reflection-remapper:0.1.1")
-    implementation("com.mineclay:tclite:1.7.0-SNAPSHOT")
+    implementation("com.mineclay:tclite:1.7.0-SNAPSHOT") {
+        exclude(group: "com.github.cryptomorin")
+    }
 //    compileOnly "io.papermc.paper:paper-api:1.18.2-R0.1-SNAPSHOT"
 }
 
@@ -63,7 +66,7 @@ tasks.named("assemble").configure {
 }
 
 tasks.shadowJar.configure {
-
+    minimize()
 }
 
 processResources {
