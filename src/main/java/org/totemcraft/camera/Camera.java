@@ -304,6 +304,8 @@ public final class Camera extends JavaPlugin {
                     ctx.sendMessage("[TotemCamera]: 已加载："+fileName);
                 }
             };
+
+            //smooth camera
             childCommand("start",(ctx)->{
                 if (posList.size()< 2) {
                     ctx.sendMessage("[TotemCamera]: 关键点必须大于或等于2个");
@@ -329,7 +331,35 @@ public final class Camera extends JavaPlugin {
                 long intervalMs = 1000 / frameRate;
                 task.schedule = positionScheduler.scheduleAtFixedRate(task, 0, intervalMs, TimeUnit.MILLISECONDS);
                 runningTasks.add(task);
+            });
 
+            //legacy camera use tp
+            childCommand("start-legacy",(ctx)->{
+                if (posList.size()< 2) {
+                    ctx.sendMessage("[TotemCamera]: 关键点必须大于或等于2个");
+                    throw  error("关键点必须大于或等于2个");
+                }
+                PointSequence ps = new PointSequence();
+                posList.forEach(element -> {
+                    double pos1 = element.getBlockX();
+                    double pos2 = element.getBlockY();
+                    double pos3 = element.getBlockZ();
+                    float yaw = element.getYaw();
+                    float pitch = element.getPitch();
+                    ps.addPoints(new Point(pos1, pos2, pos3, yaw, pitch));
+                });
+                PointSequence result = catmullRomConnect(ps, ps.getFirst(), ps.getLast(), lambda);
+
+                Point[] teleportPoints = result.array();
+
+                List<Point> points = Arrays.stream(teleportPoints).collect(Collectors.toList());
+
+//                PrimaryThreadSynchronizedPositionSender task = new PrimaryThreadSynchronizedPositionSender(ctx.getPlayer(), points);
+//                long frameRate = 100;
+//                long intervalMs = 1000 / frameRate;
+//                task.schedule = positionScheduler.scheduleAtFixedRate(task, 0, intervalMs, TimeUnit.MILLISECONDS);
+//                runningTasks.add(task);
+//
 //                Bukkit.getScheduler().runTaskTimer(Camera.this, (task)->{
 //                    if (pointIterator.hasNext()) {
 //                        Point nextPoint = pointIterator.next();
@@ -339,6 +369,7 @@ public final class Camera extends JavaPlugin {
 //                    }
 //                },0,1);
             });
+
         }
 
         @Override
