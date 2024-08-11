@@ -13,7 +13,11 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -22,6 +26,7 @@ import java.util.stream.Collectors;
 
 public final class Camera extends JavaPlugin {
     double lambda = 0.001;
+
     //用于存储点坐标的简单类
     @Data
     public class Point {
@@ -131,8 +136,7 @@ public final class Camera extends JavaPlugin {
         double c = t * (-alpha * v0 + alpha * v2);
         double d = v1;
 
-        // 取余确保结果在指定的范围内
-        return (a + b + c + d) % 360;
+        return a + b + c + d;
     }
 
     private double distance(double x1, double y1, double x2, double y2) {
@@ -209,11 +213,11 @@ public final class Camera extends JavaPlugin {
     final ScheduledExecutorService positionScheduler = Executors.newSingleThreadScheduledExecutor(
             new ThreadFactoryBuilder().setNameFormat("camera-position-scheduler").build());
 
-    final List<PrimaryThreadSynchronizedPositionSender> runningTasks = new ArrayList<>();
+    final List<PrimaryThreadSynchronizedPositionSender> runningTasks = new CopyOnWriteArrayList<>();
 
     public File getScenesDir() throws IOException {
         File scenesDir = new File(getDataFolder(), "scenes");
-        if(scenesDir.isDirectory()||scenesDir.mkdirs()) {
+        if (scenesDir.isDirectory() || scenesDir.mkdirs()) {
             return scenesDir;
         }
         throw new IOException("failed to create scenes dir");
@@ -221,7 +225,7 @@ public final class Camera extends JavaPlugin {
 
     final CommandExecutor cameraCommand = new CommandExecutor("camera") {
         {
-            childCommand("addpos", (ctx)->{
+            childCommand("addpos", (ctx) -> {
                 Location location = ctx.getPlayer().getLocation();
                 posList.add(location);
 
@@ -239,34 +243,36 @@ public final class Camera extends JavaPlugin {
 
                 ctx.sendMessage("[TotemCamera]: 添加第" + posList.size() + "个关键点");
             });
-            childCommand("clear", (ctx)->{
+            childCommand("clear", (ctx) -> {
                 posList.clear();
                 ctx.sendMessage("[TotemCamera]: 已清除所有关键点");
             });
             new CommandExecutor(this, "speed") {
                 final ArgTokenR<Double> argSpeed = requireArg(ArgParser.DOUBLE, "speed");
+
                 @Override
                 public void execute(@NotNull CommandContext ctx) throws CommandSignal {
                     lambda = (ctx.valueOf(argSpeed)) / 1000;
-                    ctx.sendMessage("[TotemCamera]: 已设置速度为："+(lambda*1000));
+                    ctx.sendMessage("[TotemCamera]: 已设置速度为：" + (lambda * 1000));
                 }
             };
             //保存当前路径为文件
             new CommandExecutor(this, "save") {
                 final ArgTokenR<String> argFilename = requireArg(ArgParser.STRING, "filename");
-                final ArgTokenR<Boolean> argOverwrite = optionalArg("overwrite").parser((ctx,arg)->"overwrite".equals(arg)).defaultsTo(false);
+                final ArgTokenR<Boolean> argOverwrite = optionalArg("overwrite").parser((ctx, arg) -> "overwrite".equals(arg)).defaultsTo(false);
+
                 @Override
                 @SneakyThrows
                 public void execute(@NotNull CommandContext ctx) throws CommandSignal {
 
-                    if (posList.size()< 2){
-                        throw  error("场景无效");
+                    if (posList.size() < 2) {
+                        throw error("场景无效");
                     }
 
                     String fileName = ctx.valueOf(argFilename);
                     boolean overwrite = ctx.valueOf(argOverwrite);
-                    File scenceFile = new File(getScenesDir(), fileName+".yml");
-                    if(scenceFile.exists()&&!overwrite) {
+                    File scenceFile = new File(getScenesDir(), fileName + ".yml");
+                    if (scenceFile.exists() && !overwrite) {
                         throw error("exists, use overwrite to overwrite");
                     }
 
@@ -274,12 +280,13 @@ public final class Camera extends JavaPlugin {
                     config.set("points", posList);
                     config.save(scenceFile);
 
-                    ctx.sendMessage("[TotemCamera]: 已保存为："+fileName);
+                    ctx.sendMessage("[TotemCamera]: 已保存为：" + fileName);
                 }
             };
             new CommandExecutor(this, "play-scene") {
                 final ArgTokenR<Player> argPlayer = requireArg(ArgParser.ONLINE_PLAYER);
                 final ArgTokenR<String> argScene = requireArg("scene");
+
                 @Override
                 public void execute(@NotNull CommandContext ctx) throws CommandSignal {
                     // todo
@@ -287,57 +294,71 @@ public final class Camera extends JavaPlugin {
             };
             //加载保存在本地的路径
             new CommandExecutor(this, "load") {
-                final ArgTokenR<String> argFilename = requireArg(ArgParser.STRING, "filename");
+                final ArgTokenR<String> argFilename = requireArg(ArgParser.STRING, "filename").completorOrAsync((ctx, arg) -> {
+                    try {
+                        File scenesDir = getScenesDir();
+                        return Arrays.stream(Objects.requireNonNull(scenesDir.listFiles((dir, name) -> name.startsWith(arg))))
+                                .filter(f -> f.getName().endsWith(".yml"))
+                                .map(f -> f.getName().substring(0, f.getName().lastIndexOf("."))).collect(Collectors.toList());
+                    } catch (Exception e) {
+                        throw error("" + e);
+                    }
+                });
+
                 @Override
                 @SneakyThrows
                 public void execute(@NotNull CommandContext ctx) throws CommandSignal {
                     String fileName = ctx.valueOf(argFilename);
-                    File scenceFile = new File(getScenesDir(), fileName+".yml");
-                    if(!scenceFile.exists()) throw error("not found");
+                    File scenceFile = new File(getScenesDir(), fileName + ".yml");
+                    if (!scenceFile.exists()) throw error("not found");
 
                     YamlConfiguration config = YamlConfiguration.loadConfiguration(scenceFile);
-                    if(!config.isList("points")) throw error("invalid config");
+                    if (!config.isList("points")) throw error("invalid config");
 
                     //noinspection unchecked
-                    Camera.this. posList = (List<Location>)config.getList("points");
+                    Camera.this.posList = (List<Location>) config.getList("points");
 
-                    ctx.sendMessage("[TotemCamera]: 已加载："+fileName);
+                    ctx.sendMessage("[TotemCamera]: 已加载：" + fileName);
                 }
             };
 
             //smooth camera
-            childCommand("start",(ctx)->{
-                if (posList.size()< 2) {
+            childCommand("start", (ctx) -> {
+                if (posList.size() < 2) {
                     ctx.sendMessage("[TotemCamera]: 关键点必须大于或等于2个");
-                    throw  error("关键点必须大于或等于2个");
+                    throw error("关键点必须大于或等于2个");
                 }
-                PointSequence ps = new PointSequence();
-                posList.forEach(element -> {
-                    double pos1 = element.getBlockX();
-                    double pos2 = element.getBlockY();
-                    double pos3 = element.getBlockZ();
-                    float yaw = element.getYaw();
-                    float pitch = element.getPitch();
-                    ps.addPoints(new Point(pos1, pos2, pos3, yaw, pitch));
+                Bukkit.getScheduler().runTaskAsynchronously(Camera.this, () -> {
+                    PointSequence ps = new PointSequence();
+                    posList.forEach(element -> {
+                        double pos1 = element.getBlockX();
+                        double pos2 = element.getBlockY();
+                        double pos3 = element.getBlockZ();
+                        float yaw = element.getYaw();
+                        float pitch = element.getPitch();
+                        ps.addPoints(new Point(pos1, pos2, pos3, yaw, pitch));
+                    });
+                    PointSequence result = catmullRomConnect(ps, ps.getFirst(), ps.getLast(), lambda);
+
+                    Point[] teleportPoints = result.array();
+
+                    List<Point> points = Arrays.stream(teleportPoints).collect(Collectors.toList());
+
+                    Bukkit.getScheduler().runTask(Camera.this, () -> {
+                        PrimaryThreadSynchronizedPositionSender task = new PrimaryThreadSynchronizedPositionSender(ctx.getPlayer(), points);
+                        long frameRate = 30;
+                        long intervalMs = 1000 / frameRate;
+                        task.schedule = positionScheduler.scheduleAtFixedRate(task, 0, intervalMs, TimeUnit.MILLISECONDS);
+                        runningTasks.add(task);
+                    });
                 });
-                PointSequence result = catmullRomConnect(ps, ps.getFirst(), ps.getLast(), lambda);
-
-                Point[] teleportPoints = result.array();
-
-                List<Point> points = Arrays.stream(teleportPoints).collect(Collectors.toList());
-
-                PrimaryThreadSynchronizedPositionSender task = new PrimaryThreadSynchronizedPositionSender(ctx.getPlayer(), points);
-                long frameRate = 100;
-                long intervalMs = 1000 / frameRate;
-                task.schedule = positionScheduler.scheduleAtFixedRate(task, 0, intervalMs, TimeUnit.MILLISECONDS);
-                runningTasks.add(task);
             });
 
             //legacy camera use tp
-            childCommand("start-legacy",(ctx)->{
-                if (posList.size()< 2) {
+            childCommand("start-legacy", (ctx) -> {
+                if (posList.size() < 2) {
                     ctx.sendMessage("[TotemCamera]: 关键点必须大于或等于2个");
-                    throw  error("关键点必须大于或等于2个");
+                    throw error("关键点必须大于或等于2个");
                 }
                 PointSequence ps = new PointSequence();
                 posList.forEach(element -> {
@@ -381,6 +402,7 @@ public final class Camera extends JavaPlugin {
     private Point toPoint(Location location) {
         return new Point(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch());
     }
+
     @Override
     public void onEnable() {
         cameraCommand.register(this);

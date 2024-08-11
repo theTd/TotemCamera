@@ -58,6 +58,7 @@ class PrimaryThreadSynchronizedPositionSender implements Runnable {
         cameraX = point.x();
         cameraY = point.y();
         cameraZ = point.z();
+        System.out.println("x " + cameraX + " y " + cameraY + " z " + cameraZ);
         ClientboundAddEntityPacket addPacket = new ClientboundAddEntityPacket(
                 pseudoEntityId, UUID.randomUUID(),
                 point.x(), point.y(), point.z(),
