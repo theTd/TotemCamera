@@ -37,7 +37,7 @@ dependencies {
     paperweight.paperDevBundle("1.18.2-R0.1-SNAPSHOT")
     implementation("org.jooq:joor-java-8:0.9.15")
     implementation("xyz.jpenilla:reflection-remapper:0.1.1")
-    implementation("com.mineclay:tclite:1.7.0-SNAPSHOT") {
+    implementation("com.mineclay:tclite:1.8.0-SNAPSHOT") {
         exclude(group: "com.github.cryptomorin")
     }
 //    compileOnly "io.papermc.paper:paper-api:1.18.2-R0.1-SNAPSHOT"
