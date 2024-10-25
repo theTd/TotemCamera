@@ -25,11 +25,11 @@ import java.util.logging.Level;
 import java.util.stream.Collectors;
 
 public final class Camera extends JavaPlugin {
-    double lambda = 0.001;
+    public double lambda = 0.001;
 
     //用于存储点坐标的简单类
     @Data
-    public class Point {
+    public static class Point {
         private final double x;
         private final double y;
         private final double z;
@@ -62,7 +62,7 @@ public final class Camera extends JavaPlugin {
         }
     }
 
-    public class PointSequence {
+    public static class PointSequence {
         private Point[] sequence;
 
 
@@ -210,7 +210,7 @@ public final class Camera extends JavaPlugin {
     List<Location> posList = new ArrayList<>();
     List<Point> interpolatedPoints = new ArrayList<>();
 
-    final ScheduledExecutorService positionScheduler = Executors.newSingleThreadScheduledExecutor(
+    public final ScheduledExecutorService positionScheduler = Executors.newSingleThreadScheduledExecutor(
             new ThreadFactoryBuilder().setNameFormat("camera-position-scheduler").build());
 
     final List<PrimaryThreadSynchronizedPositionSender> runningTasks = new CopyOnWriteArrayList<>();
@@ -413,6 +413,12 @@ public final class Camera extends JavaPlugin {
             }
             runningTasks.removeIf(t -> t.schedule == null || t.schedule.isDone());
         }, 1, 1);
+
+        try {
+            Class.forName("org.totemcraft.camera.director.Driver");
+        } catch (Throwable t) {
+            getLogger().log(Level.WARNING, "failed to load director: " + t);
+        }
     }
 
     @SneakyThrows

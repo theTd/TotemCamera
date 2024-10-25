@@ -1,4 +1,4 @@
-name: camera
+name: TotemCamera
 version: '${version}'
 main: org.totemcraft.camera.Camera
 api-version: '1.18'

@@ -20,14 +20,14 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 
-class PrimaryThreadSynchronizedPositionSender implements Runnable {
+public class PrimaryThreadSynchronizedPositionSender implements Runnable {
 
-    final static ReflectionRemapper REFLECTION_REMAPPER = ReflectionRemapper.forReobfMappingsInPaperJar();
+    public final static ReflectionRemapper REFLECTION_REMAPPER = ReflectionRemapper.forReobfMappingsInPaperJar();
 
-    final Player player;
-    final Iterator<Camera.Point> points;
-    final Camera.Point startPoint;
-    ScheduledFuture<?> schedule;
+    public final Player player;
+    public final Iterator<Camera.Point> points;
+    public final Camera.Point startPoint;
+    public ScheduledFuture<?> schedule;
 
     Camera.Point lastPoint;
 
@@ -35,7 +35,9 @@ class PrimaryThreadSynchronizedPositionSender implements Runnable {
 
     boolean finished = false;
 
-    PrimaryThreadSynchronizedPositionSender(Player player, List<Camera.Point> points) {
+    private boolean cameraInitialized = false;
+
+    public PrimaryThreadSynchronizedPositionSender(Player player, List<Camera.Point> points) {
         for (int i = 0; i < 10; i++) {
             if (points.size() <= i) break;
         }
@@ -43,8 +45,19 @@ class PrimaryThreadSynchronizedPositionSender implements Runnable {
         this.player = player;
         this.points = points.iterator();
         this.startPoint = this.points.next();
+    }
 
-        initCamera();
+    private boolean reuseCamera = false;
+
+    public void reuseCamera(GameMode originalGameMode) {
+        reuseCamera = true;
+        this.originalGameMode = originalGameMode;
+    }
+
+    private boolean keepCamera = false;
+
+    public void keepCamera() {
+        keepCamera = true;
     }
 
     int pseudoEntityId = 18640000;
@@ -58,32 +71,50 @@ class PrimaryThreadSynchronizedPositionSender implements Runnable {
         cameraX = point.x();
         cameraY = point.y();
         cameraZ = point.z();
-        System.out.println("x " + cameraX + " y " + cameraY + " z " + cameraZ);
-        ClientboundAddEntityPacket addPacket = new ClientboundAddEntityPacket(
-                pseudoEntityId, UUID.randomUUID(),
-                point.x(), point.y(), point.z(),
-                (float) point.yaw(), (float) point.pitch(),
-                EntityType.SLIME, 0,
-                Vec3.ZERO
-        );
-        nmsPlayer.connection.send(addPacket);
 
-        FriendlyByteBuf buf = new EntityDataWriter(pseudoEntityId)
-                .write(ReflectionUtil.DATA_SHARED_FLAGS_ID, (byte) (1 << 5)) // invisible
-                .write(ReflectionUtil.DATA_NO_GRAVITY, true)
-                .write(ReflectionUtil.SLIME_DATA_ID_SIZE, 1)
-                .create();
+        if (reuseCamera) {
+            // teleport camera
+            FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
+            buf.writeVarInt(pseudoEntityId);
+            buf.writeDouble(point.x());
+            buf.writeDouble(point.y() + 1.0);
+            buf.writeDouble(point.z());
+            buf.writeByte((byte) (point.yaw() * 256.0F / 360.0F));
+            buf.writeByte((byte) (point.pitch() * 256.0F / 360.0F));
+            buf.writeBoolean(false);
 
-        ClientboundSetEntityDataPacket dataPacket = new ClientboundSetEntityDataPacket(buf);
-        nmsPlayer.connection.send(dataPacket);
+            ClientboundTeleportEntityPacket teleportPacket = new ClientboundTeleportEntityPacket(buf);
+            nmsPlayer.connection.send(teleportPacket);
 
-        originalGameMode = player.getGameMode();
-        player.setGameMode(GameMode.SPECTATOR);
+            cameraMounted = true;
+        } else {
+            // create camera
+            ClientboundAddEntityPacket addPacket = new ClientboundAddEntityPacket(
+                    pseudoEntityId, UUID.randomUUID(),
+                    point.x(), point.y() + 1.0, point.z(),
+                    (float) point.yaw(), (float) point.pitch(),
+                    EntityType.SLIME, 0,
+                    Vec3.ZERO
+            );
+            nmsPlayer.connection.send(addPacket);
 
-        FriendlyByteBuf msg = new FriendlyByteBuf(Unpooled.buffer());
-        msg.writeVarInt(pseudoEntityId);
-        nmsPlayer.connection.send(new ClientboundSetCameraPacket(msg));
-        cameraMounted = true;
+            FriendlyByteBuf buf = new EntityDataWriter(pseudoEntityId)
+                    .write(ReflectionUtil.DATA_SHARED_FLAGS_ID, (byte) (1 << 5)) // invisible
+                    .write(ReflectionUtil.DATA_NO_GRAVITY, true)
+                    .write(ReflectionUtil.SLIME_DATA_ID_SIZE, 1)
+                    .create();
+
+            ClientboundSetEntityDataPacket dataPacket = new ClientboundSetEntityDataPacket(buf);
+            nmsPlayer.connection.send(dataPacket);
+
+            originalGameMode = player.getGameMode();
+            player.setGameMode(GameMode.SPECTATOR);
+
+            FriendlyByteBuf msg = new FriendlyByteBuf(Unpooled.buffer());
+            msg.writeVarInt(pseudoEntityId);
+            nmsPlayer.connection.send(new ClientboundSetCameraPacket(msg));
+            cameraMounted = true;
+        }
     }
 
     GameMode originalGameMode;
@@ -100,9 +131,22 @@ class PrimaryThreadSynchronizedPositionSender implements Runnable {
         if (originalGameMode != null) player.setGameMode(originalGameMode);
     }
 
-    void syncTick() {
+    private boolean finalized = false;
+
+    public void syncTick() {
+        if (!cameraInitialized) {
+            initCamera();
+            cameraInitialized = true;
+        }
+
         if (finished) {
-            destroyCamera();
+            if (!finalized) {
+                finalized = true;
+                if (!keepCamera) {
+                    destroyCamera();
+                }
+                onFinish();
+            }
             return;
         }
 
@@ -111,8 +155,13 @@ class PrimaryThreadSynchronizedPositionSender implements Runnable {
         ((CraftPlayer) player).getHandle().absMoveTo(syncPoint.x(), syncPoint.y(), syncPoint.z(), (float) syncPoint.yaw(), (float) syncPoint.pitch());
     }
 
+    public void onFinish() {
+    }
+
     @Override
     public void run() {
+        if (!cameraInitialized) return;
+
         if (!player.isOnline()) {
             finished = true;
             schedule.cancel(false);

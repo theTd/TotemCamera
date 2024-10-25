@@ -1,0 +1,10 @@
+name: TotemCamera
+version: '${version}'
+main: org.totemcraft.camera.Camera
+api-version: '1.18'
+depend:
+  - LibMineclay
+  - CircleLink-bukkit
+libraries:
+  - org.jooq:joor-java-8:0.9.15
+  - xyz.jpenilla:reflection-remapper:0.1.1
