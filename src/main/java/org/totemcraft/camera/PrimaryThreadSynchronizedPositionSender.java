@@ -23,6 +23,7 @@ import java.util.concurrent.ScheduledFuture;
 public class PrimaryThreadSynchronizedPositionSender implements Runnable {
 
     public final static ReflectionRemapper REFLECTION_REMAPPER = ReflectionRemapper.forReobfMappingsInPaperJar();
+    public static int pseudoEntityId = 18640000;
 
     public final Player player;
     public final Iterator<Camera.Point> points;
@@ -36,6 +37,63 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
     boolean finished = false;
 
     private boolean cameraInitialized = false;
+
+    public static void createCamera(Player player, Camera.Point point) {
+        ServerPlayer nmsPlayer = ((CraftPlayer) player).getHandle();
+        ClientboundAddEntityPacket addPacket = new ClientboundAddEntityPacket(
+                pseudoEntityId, UUID.randomUUID(),
+                point.x(), point.y() + 1.0, point.z(),
+                (float) point.yaw(), (float) point.pitch(),
+                EntityType.SLIME, 0,
+                Vec3.ZERO
+        );
+        nmsPlayer.connection.send(addPacket);
+
+        FriendlyByteBuf buf = new EntityDataWriter(pseudoEntityId)
+                .write(ReflectionUtil.DATA_SHARED_FLAGS_ID, (byte) (1 << 5)) // invisible
+                .write(ReflectionUtil.DATA_NO_GRAVITY, true)
+                .write(ReflectionUtil.SLIME_DATA_ID_SIZE, 1)
+                .create();
+
+        ClientboundSetEntityDataPacket dataPacket = new ClientboundSetEntityDataPacket(buf);
+        nmsPlayer.connection.send(dataPacket);
+
+    }
+
+    public static void teleportCamera(Player player, Camera.Point point) {
+        ServerPlayer nmsPlayer = ((CraftPlayer) player).getHandle();
+        FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
+        buf.writeVarInt(pseudoEntityId);
+        buf.writeDouble(point.x());
+        buf.writeDouble(point.y() + 1.0);
+        buf.writeDouble(point.z());
+        buf.writeByte((byte) (point.yaw() * 256.0F / 360.0F));
+        buf.writeByte((byte) (point.pitch() * 256.0F / 360.0F));
+        buf.writeBoolean(false);
+
+        ClientboundTeleportEntityPacket teleportPacket = new ClientboundTeleportEntityPacket(buf);
+        nmsPlayer.connection.send(teleportPacket);
+    }
+
+    public static void mountCamera(Player player) {
+        ServerPlayer nmsPlayer = ((CraftPlayer) player).getHandle();
+        FriendlyByteBuf msg = new FriendlyByteBuf(Unpooled.buffer());
+        msg.writeVarInt(pseudoEntityId);
+        nmsPlayer.connection.send(new ClientboundSetCameraPacket(msg));
+    }
+
+    public static void unmountCamera(Player player) {
+        ServerPlayer nmsPlayer = ((CraftPlayer) player).getHandle();
+        FriendlyByteBuf msg = new FriendlyByteBuf(Unpooled.buffer());
+        msg.writeVarInt(nmsPlayer.getId());
+        nmsPlayer.connection.send(new ClientboundSetCameraPacket(msg));
+    }
+
+    public static void removeCamera(Player player) {
+        ServerPlayer nmsPlayer = ((CraftPlayer) player).getHandle();
+        ClientboundRemoveEntitiesPacket removePkt = new ClientboundRemoveEntitiesPacket(pseudoEntityId);
+        nmsPlayer.connection.send(removePkt);
+    }
 
     public PrimaryThreadSynchronizedPositionSender(Player player, List<Camera.Point> points) {
         for (int i = 0; i < 10; i++) {
@@ -60,13 +118,10 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
         keepCamera = true;
     }
 
-    int pseudoEntityId = 18640000;
-
     double cameraX, cameraY, cameraZ;
 
     void initCamera() {
         Camera.Point point = startPoint;
-        ServerPlayer nmsPlayer = ((CraftPlayer) player).getHandle();
 
         cameraX = point.x();
         cameraY = point.y();
@@ -74,45 +129,14 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
 
         if (reuseCamera) {
             // teleport camera
-            FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
-            buf.writeVarInt(pseudoEntityId);
-            buf.writeDouble(point.x());
-            buf.writeDouble(point.y() + 1.0);
-            buf.writeDouble(point.z());
-            buf.writeByte((byte) (point.yaw() * 256.0F / 360.0F));
-            buf.writeByte((byte) (point.pitch() * 256.0F / 360.0F));
-            buf.writeBoolean(false);
-
-            ClientboundTeleportEntityPacket teleportPacket = new ClientboundTeleportEntityPacket(buf);
-            nmsPlayer.connection.send(teleportPacket);
-
+            teleportCamera(player, point);
             cameraMounted = true;
         } else {
             // create camera
-            ClientboundAddEntityPacket addPacket = new ClientboundAddEntityPacket(
-                    pseudoEntityId, UUID.randomUUID(),
-                    point.x(), point.y() + 1.0, point.z(),
-                    (float) point.yaw(), (float) point.pitch(),
-                    EntityType.SLIME, 0,
-                    Vec3.ZERO
-            );
-            nmsPlayer.connection.send(addPacket);
-
-            FriendlyByteBuf buf = new EntityDataWriter(pseudoEntityId)
-                    .write(ReflectionUtil.DATA_SHARED_FLAGS_ID, (byte) (1 << 5)) // invisible
-                    .write(ReflectionUtil.DATA_NO_GRAVITY, true)
-                    .write(ReflectionUtil.SLIME_DATA_ID_SIZE, 1)
-                    .create();
-
-            ClientboundSetEntityDataPacket dataPacket = new ClientboundSetEntityDataPacket(buf);
-            nmsPlayer.connection.send(dataPacket);
-
+            createCamera(player, point);
             originalGameMode = player.getGameMode();
             player.setGameMode(GameMode.SPECTATOR);
-
-            FriendlyByteBuf msg = new FriendlyByteBuf(Unpooled.buffer());
-            msg.writeVarInt(pseudoEntityId);
-            nmsPlayer.connection.send(new ClientboundSetCameraPacket(msg));
+            mountCamera(player);
             cameraMounted = true;
         }
     }
@@ -120,14 +144,8 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
     GameMode originalGameMode;
 
     void destroyCamera() {
-        ServerPlayer nmsPlayer = ((CraftPlayer) player).getHandle();
-        FriendlyByteBuf msg = new FriendlyByteBuf(Unpooled.buffer());
-        msg.writeVarInt(nmsPlayer.getId());
-        nmsPlayer.connection.send(new ClientboundSetCameraPacket(msg));
-
-        ClientboundRemoveEntitiesPacket removePkt = new ClientboundRemoveEntitiesPacket(pseudoEntityId);
-        nmsPlayer.connection.send(removePkt);
-
+        unmountCamera(player);
+        removeCamera(player);
         if (originalGameMode != null) player.setGameMode(originalGameMode);
     }
 

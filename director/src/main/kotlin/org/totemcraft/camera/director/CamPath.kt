@@ -12,8 +12,10 @@ data class CamPath(
     fun toDocument(): Document = Document("keyframes", keyframes.map { it.toDocument() })
         .append("speed", speed)
 
+    val isEmpty: Boolean get() = keyframes.isEmpty()
+
     companion object {
-        val EMPTY = CamPath(emptyList(), 1.0)
+        val EMPTY get() = CamPath(emptyList(), 1.0)
         fun fromDocument(doc: Document): CamPath {
             val speed = doc.getDouble("speed") ?: 1.0
             val keyframes =

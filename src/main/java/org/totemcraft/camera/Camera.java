@@ -417,7 +417,9 @@ public final class Camera extends JavaPlugin {
         try {
             Class.forName("org.totemcraft.camera.director.Driver");
         } catch (Throwable t) {
-            getLogger().log(Level.WARNING, "failed to load director: " + t);
+            if (!(t instanceof ClassNotFoundException)) {
+                getLogger().log(Level.WARNING, "failed to load director", t);
+            }
         }
     }
 

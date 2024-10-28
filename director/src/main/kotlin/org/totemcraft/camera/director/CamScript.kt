@@ -3,6 +3,9 @@ package org.totemcraft.camera.director
 import org.bson.Document
 import org.bukkit.GameMode
 import org.bukkit.entity.Player
+import org.spigotmc.AsyncCatcher
+import org.totemcraft.camera.PrimaryThreadSynchronizedPositionSender
+import org.totemcraft.camera.director.Driver.currentPlaying
 import java.util.*
 import javax.script.ScriptEngineManager
 
@@ -39,14 +42,34 @@ data class CamScript(
     ) {
         val executedCommands: List<ScriptCommand> get() = commandList.subList(0, currentCommandIndex)
         val futureCommands: List<ScriptCommand> get() = commandList.subList(currentCommandIndex + 1, commandList.size)
+
+        var currentPlayTask: PrimaryThreadSynchronizedPositionSender? = null
+
+        fun cancel() {
+            if (player.currentPlaying === this) {
+                player.currentPlaying = null
+                if (currentPlayTask != null) {
+                    currentPlayTask?.schedule?.cancel(false)
+                    player.gameMode = originalGameMode
+                    PrimaryThreadSynchronizedPositionSender.unmountCamera(player)
+                    PrimaryThreadSynchronizedPositionSender.removeCamera(player)
+                }
+            }
+        }
     }
 
     suspend fun play(player: Player) {
+        AsyncCatcher.catchOp("CamScript.play")
+
         val session = PlaySession(player, player.gameMode, commands)
+
+        player.currentPlaying?.cancel()
+        player.currentPlaying = session
         for (command in commands) {
             command.exec(player, session)
             session.currentCommandIndex += 1
         }
+        player.currentPlaying = null
     }
 
     companion object {

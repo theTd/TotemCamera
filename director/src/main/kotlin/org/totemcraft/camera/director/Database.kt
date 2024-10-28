@@ -41,4 +41,10 @@ internal object Database : IDatabase {
         container.set(doc).await()
         return true
     }
+
+    override suspend fun deleteScript(scriptName: String): Boolean {
+        latestVersion(scriptName) ?: return false
+        PropertyService.get().delete(scriptName, "director_scripts").await()
+        return true
+    }
 }

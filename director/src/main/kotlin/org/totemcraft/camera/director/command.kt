@@ -4,15 +4,17 @@ import com.google.common.cache.CacheBuilder
 import com.mineclay.lib.*
 import com.mineclay.lib.command.ArgParser
 import com.mineclay.lib.command.ArgToken
+import com.mineclay.lib.command.Args
 import com.mineclay.lib.command.command
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.runBlocking
-import net.kyori.adventure.title.Title
-import net.kyori.adventure.util.Ticks
 import org.bukkit.Bukkit
 import org.bukkit.entity.Player
-import org.bukkit.scheduler.BukkitRunnable
+import org.totemcraft.camera.director.Driver.currentPlaying
 import org.totemcraft.camera.director.Driver.plugin
+import org.totemcraft.camera.director.ScriptCommand.Companion.currentCommandToken
+import org.totemcraft.camera.director.ScriptCommand.Companion.editSession
+import org.totemcraft.camera.director.ScriptCommand.Companion.info
 import java.util.*
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
@@ -89,8 +91,9 @@ internal val directorCommand = command("director") {
             if (editing?.dirty == true) error("editing ${editing.camScript.name}, save or abort first")
             val exists = Database.loadScript(scriptName())
             if (exists != null) error("script $scriptName already exists")
-            player.editSession = EditSession(player, CamScript(scriptName(), -1))
-            echo("editing ${scriptName()}")
+            player.editSession = EditSession(player, CamScript(scriptName(), -1)).also {
+                it.listView()
+            }
         }
     }
     command("load") {
@@ -100,56 +103,51 @@ internal val directorCommand = command("director") {
             val editing = player.editSession
             if (editing?.dirty == true) error("editing ${editing.camScript.name}, save or abort first")
             val load = Database.loadScript(scriptName()) ?: error("script $scriptName not found")
-            player.editSession = EditSession(player, load)
-            echo("editing ${load.name} v${load.version}")
+            player.editSession = EditSession(player, load).also {
+                it.listView()
+            }
         }
     }
-
-    command("command") {
-        command("path").exec {
-            val session = player?.editSession ?: error("not editing")
-            val player = player!!
-            session.recordingPath = CamPath()
-            session.recording = false
-            object : BukkitRunnable() {
-                var countdown = 3
-                override fun run() {
-                    if (!player.isOnline) return cancel()
-
-                    if (countdown == 0) {
-                        player.showTitle(
-                            Title.title(
-                                "".adv(),
-                                "任意点击停止录制".adv(),
-                                Title.Times.times(Ticks.duration(0), Ticks.duration(20), Ticks.duration(20))
-                            )
-                        )
-                        session.recording = true
-                        return cancel()
-                    }
-
-                    player.showTitle(
-                        Title.title(
-                            countdown.toString().red(),
-                            "准备开始".adv(),
-                            Title.Times.times(Ticks.duration(0), Ticks.duration(40), Ticks.duration(0))
-                        )
-                    )
-                    countdown--
-                }
-            }.runTaskTimer(plugin, 0, 20)
-        }
-
-        command("await") {
-            val awaitMs = requireArg("await-milliseconds")
-            exec {
-                val session = player?.editSession ?: error("not editing")
-                session.camScript.commands += AwaitCommand().apply {
-                    timeMs = awaitMs().toLongOrNull() ?: error("invalid await milliseconds")
-                }
-                session.dirty = true
-                echo("ok")
+    command("delete-command") {
+        val index = requiredArg(Args.INT) { token = "index" }
+        exec {
+            val session = editSession
+            session.camScript.run {
+                commands = commands.toMutableList().also { it.removeAt(index()) }
             }
+            editSession.dirty()
+            editSession.listView()
+        }
+    }
+    command("edit-command") {
+        arg { idx ->
+            grafter {
+                val command = editSession.camScript.commands.getOrNull(idx().toIntOrNull() ?: error("invalid command"))
+                    ?: error("invalid command")
+                command::class.info.editor
+            }.run {
+                catchToken(currentCommandToken) {
+                    editSession.camScript.commands.getOrNull(idx().toIntOrNull() ?: error("invalid command"))
+                        ?: error("invalid command")
+                }
+            }
+        }
+    }
+    command("insert-command-prompt") {
+        val index = requiredArg(Args.INT) { token = "index" }
+        exec {
+            editSession.insertCommandPrompt(index())
+        }
+    }
+    command("insert-command") {
+        val index = requiredArg(Args.INT) { token = "index" }
+        val type = requireArg("command-type").parserOrAsync {
+            ScriptCommand.types[it] ?: error("invalid command type")
+        }.completorOrAsync { pre ->
+            ScriptCommand.types.keys.filter { it.contains(pre, true) }
+        }
+        exec {
+            editSession.insertCommand(index(), type())
         }
     }
 
@@ -160,15 +158,49 @@ internal val directorCommand = command("director") {
         grafter { saveCommand }.set(Force, false)
     }
 
+    command("save-prompt").exec {
+        DialogFormDriver.create().run {
+            val comment = textField("备注")
+            open(player!!) {
+                Bukkit.dispatchCommand(sender, "director save " + comment.result)
+            }
+        }
+    }
+
     command("play").execSuspend {
-        val session = player?.editSession ?: error("not editing")
-        session.camScript.play(player!!)
-        echo("done")
+        editSession.camScript.play(player!!)
+        editSession.listView()
+    }
+    command("stop-playing").execSuspend {
+        player?.currentPlaying?.cancel() ?: error("not playing")
+        player?.editSession?.listView()
     }
     command("abort").exec {
-        val editing = player?.editSession ?: error("not editing")
+        val editing = editSession
         player?.editSession = null
         echo("aborted editing ${editing.camScript.name}")
+    }
+    val delete = command("delete") {
+        val scriptName = requiredArg(scriptNameArg)
+        command("confirm").execSuspend {
+            if (Database.deleteScript(scriptName())) {
+                echo("deleted $scriptName successfully")
+            } else {
+                error("failed to delete $scriptName")
+            }
+        }
+    }
+    command("delete-prompt").execSuspend {
+        val scriptName = editSession.camScript.name
+        DialogFormDriver.create().run {
+            title("确定要删除脚本 $scriptName 吗？")
+            textField(".").apply {
+                result = "."
+            }
+            open(player!!) {
+                delete.call("$scriptName confirm")
+            }
+        }
     }
 
     command("play-to") {

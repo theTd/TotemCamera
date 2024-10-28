@@ -24,6 +24,7 @@ dependencies {
 
     compileOnly("com.mineclay:circle-link-bukkit:1.15.17-SNAPSHOT")
     compileOnly("com.mineclay:libmineclay:1.15.0-SNAPSHOT")
+    compileOnly("com.trychen.clay:ClayCoreSpigot:3.0.5")
 
     testImplementation(kotlin("test"))
 }
