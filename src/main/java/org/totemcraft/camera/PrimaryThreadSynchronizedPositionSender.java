@@ -2,11 +2,9 @@ package org.totemcraft.camera;
 
 import io.netty.buffer.Unpooled;
 import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.*;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
-import net.minecraft.util.Mth;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.phys.Vec3;
 import org.bukkit.GameMode;
@@ -73,6 +71,11 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
 
         ClientboundTeleportEntityPacket teleportPacket = new ClientboundTeleportEntityPacket(buf);
         nmsPlayer.connection.send(teleportPacket);
+
+        FriendlyByteBuf buf1 = new FriendlyByteBuf(Unpooled.buffer());
+        buf1.writeVarInt(pseudoEntityId);
+        buf1.writeByte((byte) (point.yaw() * 256.0F / 360.0F));
+        nmsPlayer.connection.send(new ClientboundRotateHeadPacket(buf1));
     }
 
     public static void mountCamera(Player player) {
@@ -199,23 +202,24 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
 
         Reflect.on(pktHandler).set(REFLECTION_REMAPPER.remapFieldName(ServerGamePacketListenerImpl.class, "awaitingTeleport"), ++awaitingTeleport);
 
-        short dx = (short) ((lastPoint.x() - cameraX) * 4096.0D);
-        short dy = (short) ((lastPoint.y() - cameraY) * 4096.0D);
-        short dz = (short) ((lastPoint.z() - cameraZ) * 4096.0D);
-
-        int yaw = Mth.floor((lastPoint.yaw() % 360F) * 256.0F / 360.0F);
-
-        int pitch = Mth.floor((lastPoint.pitch() % 360F) * 256.0F / 360.0F);
-
-        Packet<?> pkt = new ClientboundMoveEntityPacket.PosRot(pseudoEntityId
-                , dx, dy, dz, (byte) yaw, (byte) pitch, false);
-        pktHandler.send(pkt);
-
-        FriendlyByteBuf msg = new FriendlyByteBuf(Unpooled.buffer());
-        msg.writeVarInt(pseudoEntityId);
-        msg.writeByte((byte) yaw);
-        pkt = new ClientboundRotateHeadPacket(msg);
-        pktHandler.send(pkt);
+//        short dx = (short) ((lastPoint.x() - cameraX) * 4096.0D);
+//        short dy = (short) ((lastPoint.y() - cameraY) * 4096.0D);
+//        short dz = (short) ((lastPoint.z() - cameraZ) * 4096.0D);
+//
+//        int yaw = Mth.floor((lastPoint.yaw() % 360F) * 256.0F / 360.0F);
+//
+//        int pitch = Mth.floor((lastPoint.pitch() % 360F) * 256.0F / 360.0F);
+//
+//        Packet<?> pkt = new ClientboundMoveEntityPacket.PosRot(pseudoEntityId
+//                , dx, dy, dz, (byte) yaw, (byte) pitch, false);
+//        pktHandler.send(pkt);
+//
+//        FriendlyByteBuf msg = new FriendlyByteBuf(Unpooled.buffer());
+//        msg.writeVarInt(pseudoEntityId);
+//        msg.writeByte((byte) yaw);
+//        pkt = new ClientboundRotateHeadPacket(msg);
+//        pktHandler.send(pkt);
+        teleportCamera(player, lastPoint);
 
         cameraX = lastPoint.x();
         cameraY = lastPoint.y();

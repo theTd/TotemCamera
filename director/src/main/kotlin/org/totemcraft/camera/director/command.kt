@@ -142,9 +142,9 @@ internal val directorCommand = command("director") {
     command("insert-command") {
         val index = requiredArg(Args.INT) { token = "index" }
         val type = requireArg("command-type").parserOrAsync {
-            ScriptCommand.types[it] ?: error("invalid command type")
+            ScriptCommand.typeNameToType[it] ?: error("invalid command type")
         }.completorOrAsync { pre ->
-            ScriptCommand.types.keys.filter { it.contains(pre, true) }
+            ScriptCommand.typeNameToType.keys.filter { it.contains(pre, true) }
         }
         exec {
             editSession.insertCommand(index(), type())

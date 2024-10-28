@@ -126,7 +126,7 @@ class EditSession(
         } else {
             // select command type
             var typeSelector = "".adv()
-            val ite = ScriptCommand.types.values.iterator()
+            val ite = ScriptCommand.types.iterator()
 
             while (ite.hasNext()) {
                 val next = ite.next()

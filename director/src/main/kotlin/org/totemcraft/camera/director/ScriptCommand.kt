@@ -53,11 +53,14 @@ interface ScriptCommand {
         val CommandExecutor.editSession: EditSession get() = player?.editSession ?: error("not editing")
         val CommandExecutor.currentCommand: ScriptCommand get() = Companion.currentCommandToken()
 
-        val types = mapOf(
-            "path" to PathCommand::class,
-            "await" to AwaitCommand::class,
-            "exec" to ExecCommand::class
+        val types = listOf(
+            PathCommand::class,
+            AwaitCommand::class,
+            ExecCommand::class,
+            HardTransitionCommand::class
         )
+
+        val typeNameToType = types.associateBy { it.info.type }
 
         val KClass<out ScriptCommand>.info: Registry
             get() = companionObjectInstance as? Registry
@@ -65,13 +68,7 @@ interface ScriptCommand {
 
         fun fromDocument(doc: Document): ScriptCommand? {
             val type = doc.getString("type") ?: return null
-//            val container = when (type) {
-//                "await" -> AwaitCommand()
-//                "path" -> PathCommand()
-//                "exec" -> ExecCommand()
-//                else -> return null
-//            }
-            val container = types[type]?.createInstance() ?: return null
+            val container = typeNameToType[type]?.createInstance() ?: return null
             container.run {
                 doc.read()
             }
