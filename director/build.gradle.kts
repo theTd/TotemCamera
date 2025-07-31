@@ -1,11 +1,11 @@
 plugins {
     kotlin("jvm")
     id("io.papermc.paperweight.userdev")
-    id("com.github.johnrengelman.shadow")
+    id("com.gradleup.shadow")
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
 }
 
 repositories {

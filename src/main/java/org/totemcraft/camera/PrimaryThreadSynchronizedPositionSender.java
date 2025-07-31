@@ -3,16 +3,19 @@ package org.totemcraft.camera;
 import io.netty.buffer.Unpooled;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.protocol.game.*;
+import net.minecraft.network.syncher.EntityDataSerializers;
+import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.phys.Vec3;
 import org.bukkit.GameMode;
-import org.bukkit.craftbukkit.v1_18_R2.entity.CraftPlayer;
+import org.bukkit.craftbukkit.entity.CraftPlayer;
 import org.bukkit.entity.Player;
 import org.joor.Reflect;
 import xyz.jpenilla.reflectionremapper.ReflectionRemapper;
 
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
@@ -43,7 +46,7 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
                 point.x(), point.y() + 1.0, point.z(),
                 (float) point.yaw(), (float) point.pitch(),
                 EntityType.SLIME, 0,
-                Vec3.ZERO
+                Vec3.ZERO, point.yaw()
         );
         nmsPlayer.connection.send(addPacket);
 
@@ -53,7 +56,23 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
                 .write(ReflectionUtil.SLIME_DATA_ID_SIZE, 1)
                 .create();
 
-        ClientboundSetEntityDataPacket dataPacket = new ClientboundSetEntityDataPacket(buf);
+
+        List<SynchedEntityData.DataValue<?>> dataValues = new ArrayList<>();
+        dataValues.add(new SynchedEntityData.DataValue<>(
+                ReflectionUtil.DATA_SHARED_FLAGS_ID.id(),
+                EntityDataSerializers.BYTE, (byte) (1 << 5) // invisible
+        ));
+        dataValues.add(new SynchedEntityData.DataValue<>(
+                ReflectionUtil.DATA_NO_GRAVITY.id(),
+                EntityDataSerializers.BOOLEAN, true
+        ));
+        dataValues.add(new SynchedEntityData.DataValue<>(
+                ReflectionUtil.SLIME_DATA_ID_SIZE.id(),
+                EntityDataSerializers.INT, 1
+        ));
+
+        ClientboundSetEntityDataPacket dataPacket = new ClientboundSetEntityDataPacket(pseudoEntityId, dataValues);
+
         nmsPlayer.connection.send(dataPacket);
 
     }
