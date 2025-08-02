@@ -13,8 +13,8 @@ import org.totemcraft.camera.director.Driver.delay
 import java.util.concurrent.TimeUnit
 
 class HardTransitionCommand : ScriptCommand {
-    override val lengthMs: Int = 1000
-    override val leadTimeMs: Int = 20 * 50 // 20 ticks
+    override val lengthMs: Int = 750
+    override val leadTimeMs: Int = 15 * 50 // 15 ticks
 
     companion object : ScriptCommand.Registry {
         override val type: String = "hard-transition"
@@ -26,13 +26,13 @@ class HardTransitionCommand : ScriptCommand {
         val nextPath = session.futureCommands.firstOrNull { it is PathCommand } as? PathCommand ?: return
         val nextPoint = nextPath.path.keyframes.firstOrNull() ?: return
 
-        player.fullscreen(fadeIn = 10, stay = 20, fadeOut = 10)
+        player.fullscreen(fadeIn = 10, stay = 10, fadeOut = 10)
 
-        delay(500, TimeUnit.MILLISECONDS)
+        delay(700, TimeUnit.MILLISECONDS)
         unmountCamera(player)
         teleportCamera(
             player,
-            Camera.Point(nextPoint.x, nextPoint.y, nextPoint.z, nextPoint.yaw.toDouble(), nextPoint.pitch.toDouble())
+            Camera.Point(nextPoint.x, nextPoint.y, nextPoint.z, nextPoint.yaw.toDouble(), nextPoint.pitch.toDouble()),
         )
         player.teleport(
             Location(

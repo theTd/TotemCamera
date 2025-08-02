@@ -81,6 +81,19 @@ class PathCommand : ScriptCommand {
                     )
                 )
             }
+            command("speed").exec {
+                val player = player!!
+                val cmd = currentCommand as PathCommand
+                DialogFormDriver.create().run {
+                    title("设置速度倍率(整数)")
+                    val f = textField("速度倍率")
+                    open(player) {
+                        cmd.speed = f.result?.toIntOrNull() ?: formError("速度倍率必须为整数")
+                        editSession.dirty()
+                        editSession.listView()
+                    }
+                }
+            }
             command("play").execSuspend {
                 val player = player!!
                 val cmd = currentCommand as PathCommand
@@ -95,10 +108,12 @@ class PathCommand : ScriptCommand {
 
     var path: CamPath = CamPath.EMPTY
     var transform: PathTransform? = null
+    var speed: Int = 1
     override val lengthMs: Int get() = path.keyframes.size * 50
 
     override fun Document.write() {
         append("path", path.toDocument())
+        append("speed", speed)
         transform?.let {
             append("transform", it.toDocument())
         }
@@ -106,6 +121,7 @@ class PathCommand : ScriptCommand {
 
     override fun Document.read() {
         path = CamPath.fromDocument(get("path", Document::class.java))
+        speed = getInteger("speed", 1)
         transform = get("transform", Document::class.java)?.let { PathTransform.fromDocument(it) }
     }
 
@@ -113,8 +129,10 @@ class PathCommand : ScriptCommand {
     override suspend fun exec0(player: Player, session: PlaySession) {
         val seq = PointSequence()
 
-        path.keyframes.forEach {
-            seq.addPoints(Point(it.x, it.y, it.z, it.yaw.toDouble(), it.pitch.toDouble()))
+        path.keyframes.forEachIndexed { index, it ->
+            if (index % speed == 0) {
+                seq.addPoints(Point(it.x, it.y, it.z, it.yaw.toDouble(), it.pitch.toDouble()))
+            }
         }
 
         val finishFuture = CompletableFuture<Unit>()
@@ -155,6 +173,7 @@ class PathCommand : ScriptCommand {
                     teleportToStartPointButton(index) + " " +
                     teleportToEndPointButton(index) + " " +
                     rerecordButton(index) + " " +
+                    speedButton(index) + " " +
                     deleteButton(index)
     )
 
@@ -166,10 +185,6 @@ class PathCommand : ScriptCommand {
         buildClickCommand(index, "play")
     ).hoverEvent("回放".adv())
 
-    fun rerecordButton(index: Int): Component = "[↺]".yellow().clickEvent(
-        buildClickCommand(index, "record")
-    ).hoverEvent("重新录制".adv())
-
     fun teleportToStartPointButton(index: Int): Component = "[←]".yellow().clickEvent(
         buildClickCommand(index, "teleport-to-start")
     ).hoverEvent("传送到起点".adv())
@@ -177,6 +192,14 @@ class PathCommand : ScriptCommand {
     fun teleportToEndPointButton(index: Int): Component = "[→]".yellow().clickEvent(
         buildClickCommand(index, "teleport-to-end")
     ).hoverEvent("传送到终点".adv())
+
+    fun rerecordButton(index: Int): Component = "[↺]".yellow().clickEvent(
+        buildClickCommand(index, "record")
+    ).hoverEvent("重新录制".adv())
+
+    fun speedButton(index: Int): Component = "[${speed}]".yellow().clickEvent(
+        buildClickCommand(index, "speed")
+    ).hoverEvent("速度".adv())
 
     fun transform() = transform?.transform(path) ?: path
 
