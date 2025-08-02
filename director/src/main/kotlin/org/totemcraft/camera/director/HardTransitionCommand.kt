@@ -3,6 +3,7 @@ package org.totemcraft.camera.director
 import com.mineclay.lib.adv
 import com.mineclay.lib.command.CommandHandler
 import com.mineclay.lib.command.command
+import com.mineclay.lib.fullscreen
 import net.kyori.adventure.text.Component
 import org.bukkit.Location
 import org.bukkit.entity.Player
@@ -12,9 +13,12 @@ import org.totemcraft.camera.director.Driver.delay
 import java.util.concurrent.TimeUnit
 
 class HardTransitionCommand : ScriptCommand {
+    override val lengthMs: Int = 1000
+    override val leadTimeMs: Int = 20 * 50 // 20 ticks
+
     companion object : ScriptCommand.Registry {
         override val type: String = "hard-transition"
-        override val displayName: Component = "硬转场 (效果不好)".adv()
+        override val displayName: Component = "黑屏转场".adv()
         override val editor: CommandHandler = command("") {}
     }
 
@@ -22,6 +26,9 @@ class HardTransitionCommand : ScriptCommand {
         val nextPath = session.futureCommands.firstOrNull { it is PathCommand } as? PathCommand ?: return
         val nextPoint = nextPath.path.keyframes.firstOrNull() ?: return
 
+        player.fullscreen(fadeIn = 10, stay = 20, fadeOut = 10)
+
+        delay(500, TimeUnit.MILLISECONDS)
         unmountCamera(player)
         teleportCamera(
             player,

@@ -24,6 +24,10 @@ interface ScriptCommand {
 
     val type: String get() = this::class.info.type
 
+    val lengthMs: Int
+
+    val leadTimeMs: Int get() = 0
+
     fun toDocument(): Document = Document("type", type).apply { write() }
 
     fun Document.write() {}

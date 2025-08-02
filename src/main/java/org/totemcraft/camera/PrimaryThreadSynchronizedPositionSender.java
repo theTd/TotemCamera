@@ -8,6 +8,7 @@ import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.PositionMoveRotation;
 import net.minecraft.world.phys.Vec3;
 import org.bukkit.GameMode;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
@@ -15,10 +16,7 @@ import org.bukkit.entity.Player;
 import org.joor.Reflect;
 import xyz.jpenilla.reflectionremapper.ReflectionRemapper;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ScheduledFuture;
 
 public class PrimaryThreadSynchronizedPositionSender implements Runnable {
@@ -50,13 +48,6 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
         );
         nmsPlayer.connection.send(addPacket);
 
-        FriendlyByteBuf buf = new EntityDataWriter(pseudoEntityId)
-                .write(ReflectionUtil.DATA_SHARED_FLAGS_ID, (byte) (1 << 5)) // invisible
-                .write(ReflectionUtil.DATA_NO_GRAVITY, true)
-                .write(ReflectionUtil.SLIME_DATA_ID_SIZE, 1)
-                .create();
-
-
         List<SynchedEntityData.DataValue<?>> dataValues = new ArrayList<>();
         dataValues.add(new SynchedEntityData.DataValue<>(
                 ReflectionUtil.DATA_SHARED_FLAGS_ID.id(),
@@ -79,36 +70,34 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
 
     public static void teleportCamera(Player player, Camera.Point point) {
         ServerPlayer nmsPlayer = ((CraftPlayer) player).getHandle();
-        FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
-        buf.writeVarInt(pseudoEntityId);
-        buf.writeDouble(point.x());
-        buf.writeDouble(point.y() + 1.0);
-        buf.writeDouble(point.z());
-        buf.writeByte((byte) (point.yaw() * 256.0F / 360.0F));
-        buf.writeByte((byte) (point.pitch() * 256.0F / 360.0F));
-        buf.writeBoolean(false);
 
-        ClientboundTeleportEntityPacket teleportPacket = new ClientboundTeleportEntityPacket(buf);
-        nmsPlayer.connection.send(teleportPacket);
+        ClientboundTeleportEntityPacket tpPkt = new ClientboundTeleportEntityPacket(pseudoEntityId, new PositionMoveRotation(
+                new Vec3(point.x(), point.y() + 1.0, point.z()),
+                Vec3.ZERO, ((float) point.yaw()), ((float) point.pitch())
+        ), Collections.emptySet(), false);
 
-        FriendlyByteBuf buf1 = new FriendlyByteBuf(Unpooled.buffer());
-        buf1.writeVarInt(pseudoEntityId);
-        buf1.writeByte((byte) (point.yaw() * 256.0F / 360.0F));
-        nmsPlayer.connection.send(new ClientboundRotateHeadPacket(buf1));
+        nmsPlayer.connection.send(tpPkt);
+
+        FriendlyByteBuf headRotPktBuf = new FriendlyByteBuf(Unpooled.buffer());
+        headRotPktBuf.writeVarInt(pseudoEntityId);
+        headRotPktBuf.writeByte((byte) (point.yaw() * 256.0F / 360.0F));
+        ClientboundRotateHeadPacket headRotPkt = ClientboundRotateHeadPacket.STREAM_CODEC.decode(headRotPktBuf);
+
+        nmsPlayer.connection.send(headRotPkt);
     }
 
     public static void mountCamera(Player player) {
         ServerPlayer nmsPlayer = ((CraftPlayer) player).getHandle();
         FriendlyByteBuf msg = new FriendlyByteBuf(Unpooled.buffer());
         msg.writeVarInt(pseudoEntityId);
-        nmsPlayer.connection.send(new ClientboundSetCameraPacket(msg));
+        nmsPlayer.connection.send(ClientboundSetCameraPacket.STREAM_CODEC.decode(msg));
     }
 
     public static void unmountCamera(Player player) {
         ServerPlayer nmsPlayer = ((CraftPlayer) player).getHandle();
         FriendlyByteBuf msg = new FriendlyByteBuf(Unpooled.buffer());
         msg.writeVarInt(nmsPlayer.getId());
-        nmsPlayer.connection.send(new ClientboundSetCameraPacket(msg));
+        nmsPlayer.connection.send(ClientboundSetCameraPacket.STREAM_CODEC.decode(msg));
     }
 
     public static void removeCamera(Player player) {
@@ -216,7 +205,7 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
 
         lastPoint = points.next();
 
-        ServerGamePacketListenerImpl pktHandler = (ServerGamePacketListenerImpl) ((CraftPlayer) player).getHandle().networkManager.getPacketListener();
+        ServerGamePacketListenerImpl pktHandler = ((CraftPlayer) player).getHandle().connection;
         int awaitingTeleport = Reflect.on(pktHandler).get(REFLECTION_REMAPPER.remapFieldName(ServerGamePacketListenerImpl.class, "awaitingTeleport"));
 
         Reflect.on(pktHandler).set(REFLECTION_REMAPPER.remapFieldName(ServerGamePacketListenerImpl.class, "awaitingTeleport"), ++awaitingTeleport);

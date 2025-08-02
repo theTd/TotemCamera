@@ -37,6 +37,7 @@ class AwaitCommand : ScriptCommand {
     }
 
     var timeMs: Long = 0L
+    override val lengthMs: Int get() = timeMs.toInt()
 
     override fun Document.write() {
         append("timeMs", timeMs)

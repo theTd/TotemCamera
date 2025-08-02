@@ -95,6 +95,7 @@ class PathCommand : ScriptCommand {
 
     var path: CamPath = CamPath.EMPTY
     var transform: PathTransform? = null
+    override val lengthMs: Int get() = path.keyframes.size * 50
 
     override fun Document.write() {
         append("path", path.toDocument())

@@ -41,6 +41,8 @@ class ExecCommand : ScriptCommand {
         command = getString("command")
     }
 
+    override val lengthMs: Int = 0
+
     override fun Document.write() {
         append("command", command)
     }

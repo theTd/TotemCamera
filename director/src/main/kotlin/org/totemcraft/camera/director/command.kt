@@ -182,11 +182,13 @@ internal val directorCommand = command("director") {
     }
     val delete = command("delete") {
         val scriptName = requiredArg(scriptNameArg)
-        command("confirm").execSuspend {
-            if (Database.deleteScript(scriptName())) {
-                echo("deleted $scriptName successfully")
-            } else {
-                error("failed to delete $scriptName")
+        execSuspend {
+            if (args.getOrNull(1) == "confirm") {
+                if (Database.deleteScript(scriptName())) {
+                    echo("deleted ${scriptName()} successfully")
+                } else {
+                    error("failed to delete ${scriptName()}")
+                }
             }
         }
     }
