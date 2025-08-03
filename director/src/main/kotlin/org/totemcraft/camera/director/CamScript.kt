@@ -127,9 +127,9 @@ data class CamScript(
             }
         }
 
-        tracks.forEachIndexed { idx, cmd ->
-            System.err.println("Track $idx: ${cmd.joinToString(", ")}")
-        }
+//        tracks.forEachIndexed { idx, cmd ->
+//            System.err.println("Track $idx: ${cmd.joinToString(", ")}")
+//        }
 
         val mainTrack = tracks.first()
         val additionalTracks = tracks.drop(1)
