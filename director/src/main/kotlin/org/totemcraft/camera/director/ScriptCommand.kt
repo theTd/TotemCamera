@@ -61,7 +61,8 @@ interface ScriptCommand {
             PathCommand::class,
             AwaitCommand::class,
             ExecCommand::class,
-            HardTransitionCommand::class
+            HardTransitionCommand::class,
+            TeleportCommand::class,
         )
 
         val typeNameToType = types.associateBy { it.info.type }

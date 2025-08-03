@@ -2,6 +2,7 @@ package org.totemcraft.camera;
 
 import io.netty.buffer.Unpooled;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.*;
 import net.minecraft.network.syncher.EntityDataSerializers;
 import net.minecraft.network.syncher.SynchedEntityData;
@@ -50,13 +51,16 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
                 EntityType.ACACIA_BOAT, 0,
                 Vec3.ZERO, point.yaw()
         );
-        nmsPlayer.connection.send(addPacket);
+        ClientboundTeleportEntityPacket posPkt = new ClientboundTeleportEntityPacket(pseudoEntityId, new PositionMoveRotation(
+                new Vec3(point.x(), point.y() + 1.0, point.z()),
+                Vec3.ZERO, (float) point.yaw(), (float) point.pitch()
+        ), Collections.emptySet(), false);
 
         List<SynchedEntityData.DataValue<?>> dataValues = new ArrayList<>();
-        dataValues.add(new SynchedEntityData.DataValue<>(
-                ReflectionUtil.DATA_SHARED_FLAGS_ID.id(),
-                EntityDataSerializers.BYTE, (byte) (1 << 5) // invisible
-        ));
+//        dataValues.add(new SynchedEntityData.DataValue<>(
+//                ReflectionUtil.DATA_SHARED_FLAGS_ID.id(),
+//                EntityDataSerializers.BYTE, (byte) (1 << 5) // invisible
+//        ));
         dataValues.add(new SynchedEntityData.DataValue<>(
                 ReflectionUtil.DATA_NO_GRAVITY.id(),
                 EntityDataSerializers.BOOLEAN, true
@@ -68,45 +72,28 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
 
         ClientboundSetEntityDataPacket dataPacket = new ClientboundSetEntityDataPacket(pseudoEntityId, dataValues);
 
-        nmsPlayer.connection.send(dataPacket);
-
+        List<Packet<? super ClientGamePacketListener>> packets = new ArrayList<>();
+        packets.add(addPacket);
+        packets.add(posPkt);
+        packets.add(dataPacket);
+        nmsPlayer.connection.send(new ClientboundBundlePacket(packets));
     }
 
     public static void teleportCamera(Player player, Camera.Point point) {
         ServerPlayer nmsPlayer = ((CraftPlayer) player).getHandle();
-        ClientboundEntityPositionSyncPacket tpPkt = new ClientboundEntityPositionSyncPacket(pseudoEntityId, new PositionMoveRotation(
+        ClientboundTeleportEntityPacket tpPkt = new ClientboundTeleportEntityPacket(pseudoEntityId, new PositionMoveRotation(
                 new Vec3(point.x(), point.y() + 1.0, point.z()),
                 Vec3.ZERO, ((float) point.yaw()), ((float) point.pitch())
-        ), false);
+        ), Collections.emptySet(), false);
+//        ClientboundEntityPositionSyncPacket tpPkt = new ClientboundEntityPositionSyncPacket(pseudoEntityId, , false);
         nmsPlayer.connection.send(tpPkt);
     }
 
     public void moveCamera(Player player, Camera.Point point, @Nullable Camera.Point nextPoint) {
         ServerPlayer nmsPlayer = ((CraftPlayer) player).getHandle();
 
-//        ClientboundTeleportEntityPacket tpPkt = new ClientboundTeleportEntityPacket(pseudoEntityId, new PositionMoveRotation(
-//                new Vec3(point.x(), point.y() + 1.0, point.z()),
-//                Vec3.ZERO, ((float) point.yaw()), ((float) point.pitch())
-//        ), Collections.emptySet(), false);
-
-//        nmsPlayer.connection.send(tpPkt);
-
-//        ClientboundEntityPositionSyncPacket tpPkt = new ClientboundEntityPositionSyncPacket(pseudoEntityId, new PositionMoveRotation(
-//                new Vec3(point.x(), point.y() + 1.0, point.z()),
-//                deltaMovement, ((float) point.yaw()), ((float) point.pitch())
-//        ), false);
-//        nmsPlayer.connection.send(tpPkt);
-
-        double dx = (point.x() - cameraX);
-        short xa = (short) (dx * 4096.0D);
-        double dy = (point.y() - cameraY);
-        short ya = (short) (dy * 4096.0D);
-        double dz = (point.z() - cameraZ);
-        short za = (short) (dz * 4096.0D);
         float yaw = (float) point.yaw();
-        byte yawByte = (byte) (yaw * 256.0F / 360.0F);
         float pitch = (float) point.pitch();
-        byte pitchByte = (byte) (pitch * 256.0F / 360);
 
         Vec3 deltaMovement = Vec3.ZERO;
         if (nextPoint != null) {
@@ -116,35 +103,22 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
                     nextPoint.z() - point.z()
             );
         }
-        ClientboundMoveEntityPacket.PosRot posRot = new ClientboundMoveEntityPacket.PosRot(pseudoEntityId, xa, ya, za,
-                yawByte, pitchByte, false);
-//        nmsPlayer.connection.send(posRot);
         ClientboundEntityPositionSyncPacket posPkt = new ClientboundEntityPositionSyncPacket(pseudoEntityId, new PositionMoveRotation(
                 new Vec3(point.x(), point.y() + 1.0, point.z()),
                 deltaMovement, yaw, pitch
         ), false);
         nmsPlayer.connection.send(posPkt);
-
-
-//        FriendlyByteBuf headRotPktBuf = new FriendlyByteBuf(Unpooled.buffer());
-//        headRotPktBuf.writeVarInt(pseudoEntityId);
-//        headRotPktBuf.writeByte((byte) (point.yaw() * 256.0F / 360.0F));
-//        ClientboundRotateHeadPacket headRotPkt = ClientboundRotateHeadPacket.STREAM_CODEC.decode(headRotPktBuf);
-//
-//        nmsPlayer.connection.send(headRotPkt);
     }
 
     public static void mountCamera(Player player) {
+        player.setGameMode(GameMode.SPECTATOR);
+
         ServerPlayer nmsPlayer = ((CraftPlayer) player).getHandle();
         FriendlyByteBuf msg = new FriendlyByteBuf(Unpooled.buffer());
         msg.writeVarInt(pseudoEntityId);
         nmsPlayer.connection.send(ClientboundSetCameraPacket.STREAM_CODEC.decode(msg));
 
         // set helmet to pumpkin
-//        ArrayList<Pair<EquipmentSlot, ItemStack>> list = new ArrayList<>();
-//        list.add(new Pair<>(EquipmentSlot.HEAD, CraftItemStack.asNMSCopy(new org.bukkit.inventory.ItemStack(Material.CARVED_PUMPKIN))));
-//        ClientboundSetEquipmentPacket pkt = new ClientboundSetEquipmentPacket(nmsPlayer.getId(), list);
-
         ClientboundContainerSetSlotPacket pkt = new ClientboundContainerSetSlotPacket(
                 0, nmsPlayer.inventoryMenu.getStateId(), 5, CraftItemStack.asNMSCopy(new org.bukkit.inventory.ItemStack(Material.CARVED_PUMPKIN))
         );
@@ -158,12 +132,6 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
         nmsPlayer.connection.send(ClientboundSetCameraPacket.STREAM_CODEC.decode(msg));
 
         // set helmet back
-//        org.bukkit.inventory.ItemStack helmet = player.getInventory().getHelmet();
-//        ArrayList<Pair<EquipmentSlot, ItemStack>> list = new ArrayList<>();
-//        list.add(new Pair<>(EquipmentSlot.HEAD, CraftItemStack.asNMSCopy(Objects.requireNonNullElseGet(helmet, () -> new org.bukkit.inventory.ItemStack(Material.AIR)))));
-//        ClientboundSetEquipmentPacket pkt = new ClientboundSetEquipmentPacket(nmsPlayer.getId(), list);
-//        nmsPlayer.connection.send(pkt);
-
         ItemStack helmet = player.getInventory().getHelmet();
         ClientboundContainerSetSlotPacket pkt = new ClientboundContainerSetSlotPacket(
                 0, nmsPlayer.inventoryMenu.getStateId(), 5, CraftItemStack.asNMSCopy(Objects.requireNonNullElseGet(helmet, () -> new org.bukkit.inventory.ItemStack(Material.AIR)))
@@ -286,24 +254,6 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
         int awaitingTeleport = Reflect.on(pktHandler).get(REFLECTION_REMAPPER.remapFieldName(ServerGamePacketListenerImpl.class, "awaitingTeleport"));
 
         Reflect.on(pktHandler).set(REFLECTION_REMAPPER.remapFieldName(ServerGamePacketListenerImpl.class, "awaitingTeleport"), ++awaitingTeleport);
-
-//        short dx = (short) ((lastPoint.x() - cameraX) * 4096.0D);
-//        short dy = (short) ((lastPoint.y() - cameraY) * 4096.0D);
-//        short dz = (short) ((lastPoint.z() - cameraZ) * 4096.0D);
-//
-//        int yaw = Mth.floor((lastPoint.yaw() % 360F) * 256.0F / 360.0F);
-//
-//        int pitch = Mth.floor((lastPoint.pitch() % 360F) * 256.0F / 360.0F);
-//
-//        Packet<?> pkt = new ClientboundMoveEntityPacket.PosRot(pseudoEntityId
-//                , dx, dy, dz, (byte) yaw, (byte) pitch, false);
-//        pktHandler.send(pkt);
-//
-//        FriendlyByteBuf msg = new FriendlyByteBuf(Unpooled.buffer());
-//        msg.writeVarInt(pseudoEntityId);
-//        msg.writeByte((byte) yaw);
-//        pkt = new ClientboundRotateHeadPacket(msg);
-//        pktHandler.send(pkt);
         moveCamera(player, lastPoint, nextPoint);
 
         cameraX = lastPoint.x();

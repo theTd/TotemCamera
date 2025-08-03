@@ -8,13 +8,13 @@ import net.kyori.adventure.text.Component
 import org.bukkit.Location
 import org.bukkit.entity.Player
 import org.totemcraft.camera.Camera
-import org.totemcraft.camera.PrimaryThreadSynchronizedPositionSender.*
+import org.totemcraft.camera.PrimaryThreadSynchronizedPositionSender.teleportCamera
 import org.totemcraft.camera.director.Driver.delay
 import java.util.concurrent.TimeUnit
 
 class HardTransitionCommand : ScriptCommand {
-    override val lengthMs: Int = 750
-    override val leadTimeMs: Int = 15 * 50 // 15 ticks
+    override val lengthMs: Int = 21 * 50
+    override val leadTimeMs: Int = 11 * 50
 
     companion object : ScriptCommand.Registry {
         override val type: String = "hard-transition"
@@ -28,8 +28,8 @@ class HardTransitionCommand : ScriptCommand {
 
         player.fullscreen(fadeIn = 10, stay = 10, fadeOut = 10)
 
-        delay(700, TimeUnit.MILLISECONDS)
-        unmountCamera(player)
+        // wait fullscreen show up
+        delay(11 * 50L, TimeUnit.MILLISECONDS)
         teleportCamera(
             player,
             Camera.Point(nextPoint.x, nextPoint.y, nextPoint.z, nextPoint.yaw.toDouble(), nextPoint.pitch.toDouble()),
@@ -44,7 +44,6 @@ class HardTransitionCommand : ScriptCommand {
                 nextPoint.pitch
             )
         )
-        delay(50, TimeUnit.MILLISECONDS)
-        mountCamera(player)
+        delay(10 * 50L, TimeUnit.MILLISECONDS)
     }
 }

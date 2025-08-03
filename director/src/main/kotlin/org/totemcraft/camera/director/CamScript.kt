@@ -41,6 +41,7 @@ data class CamScript(
         val player: Player,
         val originalGameMode: GameMode,
         val commandList: List<ScriptCommand>,
+        val reuseCamera: Boolean,
         var currentCommandIndex: Int = 0,
     ) {
         val executedCommands: List<ScriptCommand> get() = commandList.subList(0, currentCommandIndex)
@@ -64,7 +65,7 @@ data class CamScript(
     suspend fun play(player: Player) {
         AsyncCatcher.catchOp("CamScript.play")
 
-        val session = PlaySession(player, player.gameMode, commands)
+        val session = PlaySession(player, player.gameMode, commands, true)
 
         player.currentPlaying?.cancel()
         player.currentPlaying = session
@@ -101,21 +102,24 @@ data class CamScript(
         }
 
         var startTime = 0
+        val commands = commands.toMutableList()
+        commands.addFirst(FadeInCommand())
+        commands.addLast(FadeOutCommand())
         commands.forEachIndexed { idx, cmd ->
             val effectiveStartTime = (startTime - cmd.leadTimeMs).coerceAtLeast(0)
             val endTime = effectiveStartTime + cmd.lengthMs
-            appendCommand(TrackElement(cmd, idx, effectiveStartTime, endTime))
+            appendCommand(TrackElement(cmd, idx - 1/*fade in*/, effectiveStartTime, endTime))
             startTime += cmd.lengthMs - cmd.leadTimeMs
         }
 
-        suspend fun playTrack(sortedElements: List<TrackElement>, mainTrack: Boolean = false) {
+        suspend fun playTrack(trackId: Int, sortedElements: List<TrackElement>) {
             var now = 0
             for (element in sortedElements) {
                 val await = element.startTime - now
                 if (await > 0) {
                     delay(await.toLong())
                 }
-                if (mainTrack) {
+                if (trackId == 0) {
                     session.currentCommandIndex = element.cmdIdx
                 }
                 element.cmd.exec(player, session)
@@ -123,15 +127,19 @@ data class CamScript(
             }
         }
 
+        tracks.forEachIndexed { idx, cmd ->
+            System.err.println("Track $idx: ${cmd.joinToString(", ")}")
+        }
+
         val mainTrack = tracks.first()
         val additionalTracks = tracks.drop(1)
 
-        additionalTracks.forEach { track ->
+        additionalTracks.forEachIndexed { idx, track ->
             plugin.launchCoroutine {
-                playTrack(track.sortedBy { it.startTime })
+                playTrack(idx + 1, track.sortedBy { it.startTime })
             }
         }
-        playTrack(mainTrack.sortedBy { it.startTime }, mainTrack = true)
+        playTrack(0, mainTrack.sortedBy { it.startTime })
 
         player.currentPlaying = null
     }

@@ -21,6 +21,7 @@ import org.totemcraft.camera.director.ScriptCommand.Companion.currentCommand
 import org.totemcraft.camera.director.ScriptCommand.Companion.editSession
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+import kotlin.math.floor
 
 class PathCommand : ScriptCommand {
     companion object : ScriptCommand.Registry {
@@ -97,7 +98,7 @@ class PathCommand : ScriptCommand {
             command("play").execSuspend {
                 val player = player!!
                 val cmd = currentCommand as PathCommand
-                val s = PlaySession(player, player.gameMode, listOf(cmd))
+                val s = PlaySession(player, player.gameMode, listOf(cmd), false)
                 player.currentPlaying?.cancel()
                 player.currentPlaying = s
                 cmd.exec0(player, s)
@@ -109,7 +110,7 @@ class PathCommand : ScriptCommand {
     var path: CamPath = CamPath.EMPTY
     var transform: PathTransform? = null
     var speed: Int = 1
-    override val lengthMs: Int get() = path.keyframes.size * 50
+    override val lengthMs: Int get() = (floor(path.keyframes.size / speed.toDouble())).toInt() * 50
 
     override fun Document.write() {
         append("path", path.toDocument())
@@ -142,8 +143,9 @@ class PathCommand : ScriptCommand {
             }
         }
 
-        if (session.executedCommands.any { it is PathCommand })
+        if (session.reuseCamera) {
             task.reuseCamera(session.originalGameMode)
+        }
 
         if (session.futureCommands.any { it is PathCommand })
             task.keepCamera()
