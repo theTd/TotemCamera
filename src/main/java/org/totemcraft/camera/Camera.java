@@ -1,9 +1,15 @@
 package org.totemcraft.camera;
 
+import com.comphenix.protocol.PacketType;
+import com.comphenix.protocol.ProtocolLibrary;
+import com.comphenix.protocol.events.PacketAdapter;
+import com.comphenix.protocol.events.PacketEvent;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.mineclay.tclite.command.*;
 import lombok.Data;
 import lombok.SneakyThrows;
+import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
+import net.minecraft.world.item.Items;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -421,6 +427,22 @@ public final class Camera extends JavaPlugin {
                 getLogger().log(Level.WARNING, "failed to load director", t);
             }
         }
+
+        ProtocolLibrary.getProtocolManager().addPacketListener(new PacketAdapter(this, PacketType.Play.Server.SET_SLOT) {
+            @Override
+            public void onPacketSending(PacketEvent event) {
+                boolean usingCamera = PrimaryThreadSynchronizedPositionSender.isPlayerUsingCamera(event.getPlayer());
+                if (usingCamera) {
+                    // overwrite
+                    ClientboundContainerSetSlotPacket nms = (ClientboundContainerSetSlotPacket) event.getPacket().getHandle();
+                    if (nms.getContainerId() == 0 && nms.getSlot() == 5) {
+                        if (nms.getItem().getItem() != Items.CARVED_PUMPKIN) {
+                            event.setCancelled(true);
+                        }
+                    }
+                }
+            }
+        });
     }
 
     @SneakyThrows

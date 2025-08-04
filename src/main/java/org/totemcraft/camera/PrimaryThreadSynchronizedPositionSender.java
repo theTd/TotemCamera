@@ -1,5 +1,7 @@
 package org.totemcraft.camera;
 
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import io.netty.buffer.Unpooled;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.protocol.Packet;
@@ -42,7 +44,15 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
 
     private boolean cameraInitialized = false;
 
+    public static boolean isPlayerUsingCamera(Player player) {
+        return USING_CAMERA_CACHE.getIfPresent(player) == Boolean.TRUE;
+    }
+
+    private final static Cache<Player, Boolean> USING_CAMERA_CACHE = CacheBuilder.newBuilder().weakKeys().build();
+
     public static void createCamera(Player player, Camera.Point point) {
+        USING_CAMERA_CACHE.put(player, true);
+
         ServerPlayer nmsPlayer = ((CraftPlayer) player).getHandle();
         ClientboundAddEntityPacket addPacket = new ClientboundAddEntityPacket(
                 pseudoEntityId, UUID.randomUUID(),
@@ -195,6 +205,7 @@ public class PrimaryThreadSynchronizedPositionSender implements Runnable {
     GameMode originalGameMode;
 
     void destroyCamera() {
+        USING_CAMERA_CACHE.invalidate(player);
         unmountCamera(player);
         removeCamera(player);
         if (originalGameMode != null) player.setGameMode(originalGameMode);
