@@ -90,7 +90,7 @@ internal val directorCommand = command("director") {
             val editing = player.editSession
             if (editing?.dirty == true) error("editing ${editing.camScript.name}, save or abort first")
             val exists = Database.loadScript(scriptName())
-            if (exists != null) error("script $scriptName already exists")
+            if (exists != null) error("script ${scriptName()} already exists")
             player.editSession = EditSession(player, CamScript(scriptName(), -1)).also {
                 it.listView()
             }
@@ -179,6 +179,18 @@ internal val directorCommand = command("director") {
         val editing = editSession
         player?.editSession = null
         echo("aborted editing ${editing.camScript.name}")
+    }
+    command("copy-to") {
+        val newName = requireArg("new-script-name")
+        execSuspend {
+            val script = player?.editSession?.camScript ?: error("not editing")
+            val exist = directorDatabase.loadScript(newName())
+            if (exist != null) error("script ${newName()} already exists")
+            val newScript = script.copy(name = newName())
+            if (!directorDatabase.saveScript(newScript)) error("failed to save new script")
+            player?.editSession = EditSession(player!!, newScript)
+            player?.editSession?.listView()
+        }
     }
     val delete = command("delete") {
         val scriptName = requiredArg(scriptNameArg)
