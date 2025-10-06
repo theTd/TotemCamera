@@ -1,6 +1,5 @@
 package org.totemcraft.camera;
 
-import com.comphenix.protocol.PacketType;
 import com.comphenix.protocol.ProtocolLibrary;
 import com.comphenix.protocol.events.PacketAdapter;
 import com.comphenix.protocol.events.PacketEvent;
@@ -8,7 +7,9 @@ import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.mineclay.tclite.command.*;
 import lombok.Data;
 import lombok.SneakyThrows;
+import net.minecraft.network.protocol.game.ClientboundContainerSetContentPacket;
 import net.minecraft.network.protocol.game.ClientboundContainerSetSlotPacket;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -29,6 +30,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
+
+import static com.comphenix.protocol.PacketType.Play.Server.SET_SLOT;
+import static com.comphenix.protocol.PacketType.Play.Server.WINDOW_ITEMS;
 
 public final class Camera extends JavaPlugin {
     public double lambda = 0.001;
@@ -428,16 +432,28 @@ public final class Camera extends JavaPlugin {
             }
         }
 
-        ProtocolLibrary.getProtocolManager().addPacketListener(new PacketAdapter(this, PacketType.Play.Server.SET_SLOT) {
+        // protect carved pumpkin
+        ProtocolLibrary.getProtocolManager().addPacketListener(new PacketAdapter(this,
+                SET_SLOT, WINDOW_ITEMS
+        ) {
             @Override
             public void onPacketSending(PacketEvent event) {
                 boolean usingCamera = PrimaryThreadSynchronizedPositionSender.isPlayerUsingCamera(event.getPlayer());
                 if (usingCamera) {
-                    // overwrite
-                    ClientboundContainerSetSlotPacket nms = (ClientboundContainerSetSlotPacket) event.getPacket().getHandle();
-                    if (nms.getContainerId() == 0 && nms.getSlot() == 5) {
-                        if (nms.getItem().getItem() != Items.CARVED_PUMPKIN) {
-                            event.setCancelled(true);
+                    if (event.getPacketType() == SET_SLOT) {
+                        ClientboundContainerSetSlotPacket nms = (ClientboundContainerSetSlotPacket) event.getPacket().getHandle();
+                        if (nms.getContainerId() == 0 && nms.getSlot() == 5) {
+                            if (nms.getItem().getItem() != Items.CARVED_PUMPKIN) {
+                                event.setCancelled(true);
+                            }
+                        }
+                    } else if (event.getPacketType() == WINDOW_ITEMS) {
+                        ClientboundContainerSetContentPacket nms = (ClientboundContainerSetContentPacket) event.getPacket().getHandle();
+                        if (nms.getContainerId() == 0) {
+                            ItemStack helmet = nms.getItems().get(5);
+                            if (helmet.getItem() != Items.CARVED_PUMPKIN) {
+                                nms.getItems().set(5, new ItemStack(Items.CARVED_PUMPKIN));
+                            }
                         }
                     }
                 }

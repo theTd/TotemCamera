@@ -15,7 +15,7 @@ class FadeOutCommand : ScriptCommand {
         player: Player,
         session: CamScript.PlaySession,
     ) {
-        player.fullscreen(fadeIn = 10, stay = 0, fadeOut = 10)
+        player.fullscreen(fadeIn = 10, stay = 10, fadeOut = 10)
     }
 
     companion object : ScriptCommand.Registry {
